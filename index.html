@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sankey — Flow Diagram Builder</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Code+Pro:wght@400;600&display=swap');
+:root {
+  --bg:#f4f5f7;--surface:#fff;--surface2:#eaecf0;--border:#c8ccd4;
+  --text:#000;--text-dim:#4b5563;--text-head1:#1A204C;--text-head2:#21409A;
+  --accent:#21409A;--accent-hover:#1A204C;--danger:#c0392b;--success:#1a7a4a;
+  --header-bg:#1A204C;--header-text:#fff;--font-body:Arial,'Inter',sans-serif;
+  --font-mono:'Source Code Pro','Courier New',monospace;
+}
+[data-theme="dark"]{
+  --bg:#0d1020;--surface:#141829;--surface2:#1c2238;--border:#2a3154;
+  --text:#e8eaf0;--text-dim:#8892b0;--text-head1:#a8b4e8;--text-head2:#6b8de0;
+  --accent:#4a72d4;--header-bg:#0d1020;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:14px;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+header{display:flex;align-items:center;justify-content:space-between;padding:10px 20px;background:var(--header-bg);border-bottom:1px solid var(--border);flex-shrink:0;gap:12px;}
+.logo{font-family:var(--font-mono);font-size:15px;font-weight:700;letter-spacing:.12em;color:#fff;white-space:nowrap;}
+.logo span{color:rgba(255,255,255,.55);font-weight:400;}
+.hbtn{height:32px;padding:0 14px;font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;border-radius:5px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;transition:all .15s;}
+.hbtn.ghost{border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;}
+.hbtn.ghost:hover{background:rgba(255,255,255,.25);}
+.hbtn.primary{background:var(--accent);border:1px solid var(--accent);color:#fff;}
+.hbtn.primary:hover{background:var(--accent-hover);}
+.hbtn.green{border:1px solid #34d399;color:#34d399;background:rgba(52,211,153,.1);}
+.hbtn.green:hover{background:#34d399;color:#000;}
+.hbtn.toggle{width:32px;padding:0;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;font-size:15px;}
+.hbtn.toggle:hover{background:rgba(255,255,255,.2);}
+.main{display:flex;flex:1;min-height:0;overflow:hidden;}
+.sidebar{width:300px;min-width:300px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.sidebar-body{flex:1;overflow-y:auto;padding:12px;}
+.sidebar-body::-webkit-scrollbar{width:5px;}
+.sidebar-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+.sidebar-footer{padding:10px;border-top:1px solid var(--border);display:flex;gap:6px;}
+.label{font-family:var(--font-mono);font-size:10px;color:var(--text-head2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px;}
+textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:var(--font-mono);font-size:11px;padding:7px 8px;resize:vertical;outline:none;line-height:1.7;}
+textarea:focus{border-color:var(--accent);}
+.sbtn{height:32px;padding:0 12px;font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;border-radius:5px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;border:1px solid var(--border);background:var(--surface2);color:var(--text);}
+.sbtn:hover{background:var(--accent);border-color:var(--accent);color:#fff;}
+.sbtn.primary{background:var(--accent);border-color:var(--accent);color:#fff;flex:1;}
+.sbtn.primary:hover{background:var(--accent-hover);}
+.chart-area{flex:1;display:flex;flex-direction:column;background:#1c2733;position:relative;overflow:hidden;}
+#chart-svg{width:100%;height:100%;}
+.chart-status{position:absolute;bottom:12px;right:14px;font-family:var(--font-mono);font-size:10px;color:rgba(255,255,255,.35);pointer-events:none;}
+.loading{position:absolute;inset:0;background:rgba(15,15,17,.8);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;z-index:100;}
+.loading.hidden{display:none;}
+.spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.err-msg{background:rgba(192,57,43,.15);border:1px solid var(--danger);border-radius:5px;padding:8px 10px;font-family:var(--font-mono);font-size:11px;color:var(--danger);margin-top:8px;display:none;}
+.tooltip{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:6px 10px;font-size:12px;pointer-events:none;z-index:200;display:none;font-family:var(--font-mono);white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.4);}
+.opt-row{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
+select{background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--font-mono);font-size:11px;height:28px;padding:0 8px;outline:none;cursor:pointer;}
+select:focus{border-color:var(--accent);}
+input[type=range]{accent-color:var(--accent);cursor:pointer;flex:1;}
+.val-badge{font-family:var(--font-mono);font-size:10px;color:var(--text-dim);min-width:28px;text-align:right;}
+</style>
+</head>
+<body>
+<header>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="logo">SANKEY<span>BUILDER</span></div>
+    <button class="hbtn toggle" onclick="toggleTheme()" id="themeBtn">◑</button>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <button class="hbtn primary" onclick="renderChart()">RENDER</button>
+    <button class="hbtn ghost" onclick="resetView()">RESET</button>
+    <button class="hbtn green" onclick="exportPNG()">EXPORT PNG</button>
+  </div>
+</header>
+<div class="main">
+  <div class="sidebar">
+    <div class="sidebar-body">
+      <div class="label">CSV DATA</div>
+      <textarea id="csvInput" rows="16" placeholder="source,target,value
+Budget,Salaries,450000
+Budget,Operations,200000
+Budget,Marketing,150000
+Salaries,Engineering,280000
+Salaries,Sales,170000
+Operations,Facilities,80000
+Operations,IT,120000"></textarea>
+      <div class="err-msg" id="errMsg"></div>
+      <div style="margin-top:10px;">
+        <div class="label">NODE ALIGNMENT</div>
+        <div class="opt-row">
+          <select id="alignSelect">
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+            <option value="center">Center</option>
+            <option value="justify" selected>Justify</option>
+          </select>
+        </div>
+        <div class="label">NODE WIDTH</div>
+        <div class="opt-row">
+          <input type="range" id="nodeWidth" min="4" max="40" value="20">
+          <span class="val-badge" id="nodeWidthVal">20</span>
+        </div>
+        <div class="label">NODE PADDING</div>
+        <div class="opt-row">
+          <input type="range" id="nodePad" min="4" max="60" value="18">
+          <span class="val-badge" id="nodePadVal">18</span>
+        </div>
+        <div class="label">LINK OPACITY</div>
+        <div class="opt-row">
+          <input type="range" id="linkOp" min="10" max="90" value="40">
+          <span class="val-badge" id="linkOpVal">40%</span>
+        </div>
+        <div class="label">COLOR SCHEME</div>
+        <div class="opt-row">
+          <select id="colorScheme">
+            <option value="doe">DOE Brand</option>
+            <option value="tableau">Tableau</option>
+            <option value="pastel">Pastel</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-footer">
+      <button class="sbtn primary" onclick="renderChart()">RENDER</button>
+      <button class="sbtn" onclick="downloadTemplate()">CSV TEMPLATE</button>
+    </div>
+  </div>
+  <div class="chart-area">
+    <svg id="chart-svg"></svg>
+    <div class="chart-status" id="chartStatus">paste data → click RENDER</div>
+    <div class="loading hidden" id="loading"><div class="spinner"></div></div>
+  </div>
+</div>
+<div class="tooltip" id="tooltip"></div>
+<script>
+const PALETTES = {
+  doe:    ['#005B82','#00A9E0','#E37222','#FECB00','#5A6A71','#0F6636','#69BE28','#C3C8C8','#21409A','#1A204C'],
+  tableau:['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'],
+  pastel: ['#a8d8ea','#f9d5e5','#ffe0ac','#b5ead7','#c7ceea','#ffdac1','#e2f0cb','#b5b9ff','#ff9aa2','#c9c9ff'],
+  dark:   ['#264653','#2a9d8f','#e9c46a','#f4a261','#e76f51','#023047','#219ebc','#8ecae6','#ffb703','#fb8500'],
+};
+
+const TEMPLATES = {
+  sankey: `source,target,value
+Budget,Salaries,450000
+Budget,Operations,200000
+Budget,Marketing,150000
+Salaries,Engineering,280000
+Salaries,Sales,170000
+Operations,Facilities,80000
+Operations,IT,120000
+Marketing,Digital,90000
+Marketing,Events,60000`
+};
+
+function downloadTemplate() {
+  const blob = new Blob([TEMPLATES.sankey], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'sankey_template.csv'; a.click();
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n').filter(l => l.trim() && !l.startsWith('#'));
+  if (!lines.length) throw new Error('No data');
+  const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const si = header.indexOf('source'), ti = header.indexOf('target'), vi = header.indexOf('value');
+  if (si < 0 || ti < 0 || vi < 0) throw new Error('CSV must have columns: source, target, value');
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.trim());
+    if (cols.length < 3) continue;
+    const v = parseFloat(cols[vi].replace(/[^0-9.-]/g,''));
+    if (!cols[si] || !cols[ti] || isNaN(v)) continue;
+    rows.push({source: cols[si], target: cols[ti], value: v});
+  }
+  if (!rows.length) throw new Error('No valid rows found');
+  return rows;
+}
+
+function buildSankeyData(rows) {
+  const nodeSet = new Map();
+  rows.forEach(r => { if (!nodeSet.has(r.source)) nodeSet.set(r.source, nodeSet.size); if (!nodeSet.has(r.target)) nodeSet.set(r.target, nodeSet.size); });
+  const nodes = Array.from(nodeSet.keys()).map(name => ({name}));
+  const links = rows.map(r => ({source: nodeSet.get(r.source), target: nodeSet.get(r.target), value: r.value}));
+  return {nodes, links};
+}
+
+let zoomBehavior;
+function renderChart() {
+  const errEl = document.getElementById('errMsg');
+  errEl.style.display = 'none';
+  try {
+    const rows = parseCSV(document.getElementById('csvInput').value);
+    const data = buildSankeyData(rows);
+    drawSankey(data);
+    document.getElementById('chartStatus').textContent = `${data.nodes.length} nodes · ${data.links.length} links`;
+  } catch(e) {
+    errEl.textContent = e.message; errEl.style.display = 'block';
+  }
+}
+
+function drawSankey(data) {
+  const svgEl = document.getElementById('chart-svg');
+  const W = svgEl.clientWidth || 800, H = svgEl.clientHeight || 560;
+  const pad = {top:20, right:160, bottom:20, left:10};
+  const scheme = PALETTES[document.getElementById('colorScheme').value];
+  const nodeW = +document.getElementById('nodeWidth').value;
+  const nodePadding = +document.getElementById('nodePad').value;
+  const linkOpacity = +document.getElementById('linkOp').value / 100;
+  const alignKey = document.getElementById('alignSelect').value;
+  const alignFn = {left:d3.sankeyLeft, right:d3.sankeyRight, center:d3.sankeyCenter, justify:d3.sankeyJustify}[alignKey];
+
+  const sankey = d3.sankey().nodeWidth(nodeW).nodePadding(nodePadding)
+    .nodeAlign(alignFn)
+    .extent([[pad.left, pad.top],[W - pad.right, H - pad.bottom]]);
+
+  const {nodes, links} = sankey({nodes: data.nodes.map(d=>({...d})), links: data.links.map(d=>({...d}))});
+  const color = d3.scaleOrdinal(scheme);
+
+  const svg = d3.select(svgEl);
+  svg.selectAll('*').remove();
+  svg.attr('viewBox', `0 0 ${W} ${H}`);
+
+  const g = svg.append('g');
+  if (!zoomBehavior) {
+    zoomBehavior = d3.zoom().scaleExtent([0.3, 8]).on('zoom', e => g.attr('transform', e.transform));
+    svg.call(zoomBehavior); svg.on('dblclick.zoom', null);
+  } else { svg.call(zoomBehavior); }
+
+  const tooltip = document.getElementById('tooltip');
+  const fmt = d3.format(',.0f');
+
+  // Links
+  const link = g.append('g').attr('fill','none').selectAll('g').data(links).join('g')
+    .attr('stroke', d => color(d.source.name)).attr('stroke-opacity', linkOpacity);
+  link.append('path').attr('d', d3.sankeyLinkHorizontal()).attr('stroke-width', d => Math.max(1, d.width));
+  link.on('mouseover', function(e, d) {
+    d3.select(this).attr('stroke-opacity', Math.min(0.9, linkOpacity + 0.35));
+    tooltip.style.display = 'block';
+    tooltip.innerHTML = `${d.source.name} → ${d.target.name}: <b>${fmt(d.value)}</b>`;
+  }).on('mousemove', e => { tooltip.style.left=(e.clientX+14)+'px'; tooltip.style.top=(e.clientY-8)+'px'; })
+    .on('mouseout', function() { d3.select(this).attr('stroke-opacity', linkOpacity); tooltip.style.display='none'; });
+
+  // Nodes
+  const node = g.append('g').selectAll('g').data(nodes).join('g');
+  node.append('rect').attr('x', d=>d.x0).attr('y', d=>d.y0)
+    .attr('width', d=>d.x1-d.x0).attr('height', d=>d.y1-d.y0)
+    .attr('fill', d => color(d.name)).attr('rx', 2)
+    .on('mouseover', function(e,d) { tooltip.style.display='block'; tooltip.innerHTML=`${d.name}: <b>${fmt(d.value)}</b>`; })
+    .on('mousemove', e => { tooltip.style.left=(e.clientX+14)+'px'; tooltip.style.top=(e.clientY-8)+'px'; })
+    .on('mouseout', () => tooltip.style.display='none');
+
+  // Labels
+  node.append('text').attr('x', d => d.x0 < W/2 ? d.x1+6 : d.x0-6)
+    .attr('y', d => (d.y0+d.y1)/2).attr('dy','0.35em')
+    .attr('text-anchor', d => d.x0 < W/2 ? 'start' : 'end')
+    .attr('fill','rgba(255,255,255,0.9)').attr('font-size', 11)
+    .attr('font-family','var(--font-mono)')
+    .text(d => `${d.name} (${fmt(d.value)})`);
+}
+
+function resetView() { if(zoomBehavior) d3.select('#chart-svg').transition().duration(400).call(zoomBehavior.transform, d3.zoomIdentity); }
+
+async function exportPNG() {
+  const svgEl = document.getElementById('chart-svg');
+  const W = svgEl.clientWidth, H = svgEl.clientHeight;
+  const scale = 2000/Math.min(W,H);
+  const outW = Math.round(W*scale), outH = Math.round(H*scale);
+  const clone = svgEl.cloneNode(true);
+  clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  clone.setAttribute('width',outW); clone.setAttribute('height',outH);
+  clone.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)],{type:'image/svg+xml'}));
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas'); canvas.width=outW; canvas.height=outH;
+    const ctx = canvas.getContext('2d'); ctx.fillStyle='#1c2733'; ctx.fillRect(0,0,outW,outH);
+    ctx.drawImage(img,0,0,outW,outH); URL.revokeObjectURL(url);
+    canvas.toBlob(b => { const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=`sankey_${Date.now()}.png`; a.click(); },'image/png');
+  }; img.src=url;
+}
+
+function toggleTheme() {
+  const d = document.documentElement; const dark = d.getAttribute('data-theme')==='dark';
+  d.setAttribute('data-theme', dark?'':'dark'); document.getElementById('themeBtn').textContent=dark?'◑':'◐';
+}
+
+document.getElementById('nodeWidth').oninput = function(){ document.getElementById('nodeWidthVal').textContent=this.value; };
+document.getElementById('nodePad').oninput   = function(){ document.getElementById('nodePadVal').textContent=this.value; };
+document.getElementById('linkOp').oninput    = function(){ document.getElementById('linkOpVal').textContent=this.value+'%'; };
+
+window.addEventListener('load', renderChart);
+window.addEventListener('resize', () => { try{ renderChart(); } catch(e){} });
+</script>
+</body>
+</html>
